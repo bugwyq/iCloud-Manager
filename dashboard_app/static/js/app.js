@@ -184,7 +184,17 @@ async function fetchSelected(force = true) {
     renderMailDetail(state.messages[0] || null, state.messages.length, state.noHistory ? "无历史邮件" : "");
     addLog(`${account.email} 刷新完成，${state.messages.length} 封邮件`);
     toast("邮件已更新");
-    await loadState(true, {reloadSelected: false});
+    const index = state.accounts.findIndex((item) => item.id === account.id);
+    if (index >= 0) {
+      state.accounts[index] = {
+        ...state.accounts[index],
+        ...(data.account || {}),
+        cached: true,
+        last_message_count: state.messages.length,
+        no_history: state.noHistory,
+      };
+      renderAccountList({preserveScroll: true});
+    }
   } catch (err) {
     addLog(`${account.email} ${err.message}`);
     toast(err.message, "error");

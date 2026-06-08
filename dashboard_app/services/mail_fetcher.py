@@ -4,6 +4,7 @@ import random
 import threading as _threading
 import time
 import urllib.error
+import urllib.parse
 import urllib.request
 from typing import Any
 
@@ -17,7 +18,7 @@ from dashboard_app.services.accounts import (
 from dashboard_app.services.cache import delete_cache, load_cache, save_cache
 from dashboard_app.services.mail_parser import messages_from_response
 from dashboard_app.services.time_utils import now_iso
-from dashboard_app.utils.text import source_host
+from dashboard_app.utils.text import normalize_source_url, source_host
 
 # per-host connection limiter (concurrent, not sequential)
 _HOST_SEMAPHORES: dict[str, _threading.BoundedSemaphore] = {}
@@ -52,7 +53,7 @@ def fetch_mail_for_account(account_id: str, force: bool = False) -> dict[str, An
                 cached["cached"] = True
                 return {"ok": True, "account": public_account(account), "cache": cached}
 
-    source_url = str(account.get("source_url") or "").strip()
+    source_url = normalize_source_url(str(account.get("source_url") or "").strip())
     email = str(account.get("email") or account_id)
     if not source_url:
         account["last_error"] = "缺少收信链接"
@@ -64,6 +65,7 @@ def fetch_mail_for_account(account_id: str, force: bool = False) -> dict[str, An
         return {"ok": False, "error": "缺少收信链接", "email": email}
 
     # ── HTTP fetch with retry ──
+    fetch_urls = _candidate_source_urls(source_url)
     last_error = ""
     last_status = 0
     for attempt in range(settings.fetch_retries + 1):
@@ -78,7 +80,24 @@ def fetch_mail_for_account(account_id: str, force: bool = False) -> dict[str, An
                 time.sleep(delay)  # ~1s, 2s, 4s, 8s
 
         try:
-            raw, status_code, content_type = _do_fetch(source_url)
+            raw = b""
+            status_code = 0
+            content_type = ""
+            used_url = source_url
+            for candidate_url in fetch_urls:
+                try:
+                    raw, status_code, content_type = _do_fetch(candidate_url)
+                except Exception:
+                    if candidate_url != fetch_urls[-1]:
+                        continue
+                    raise
+                text = _decode_response(raw, content_type)
+                if candidate_url != fetch_urls[-1] and (
+                    _source_no_history_message(text) or _source_error_message(text)
+                ):
+                    continue
+                used_url = candidate_url
+                break
         except urllib.error.HTTPError as exc:
             last_status = int(getattr(exc, "code", 500))
             last_error = f"收信链接返回 HTTP {last_status}"
@@ -98,15 +117,19 @@ def fetch_mail_for_account(account_id: str, force: bool = False) -> dict[str, An
             break
         else:
             # success — parse and save
-            return _process_response(account_id, account, source_url, raw, status_code, content_type)
+            return _process_response(account_id, account, used_url, raw, status_code, content_type, source_url)
 
     # all attempts failed
     return _mark_fetch_error(account_id, last_error)
 
 
+def _candidate_source_urls(source_url: str) -> list[str]:
+    normalized = normalize_source_url(source_url)
+    return [normalized] if normalized else [source_url]
+
+
 def _do_fetch(source_url: str) -> tuple[bytes, int, str]:
-    from urllib.parse import urlparse
-    host = urlparse(source_url).netloc or "unknown"
+    host = urllib.parse.urlparse(source_url).netloc or "unknown"
     acquired = False
     try:
         _acquire_host_slot(host)
@@ -130,6 +153,16 @@ def _do_fetch(source_url: str) -> tuple[bytes, int, str]:
             _release_host_slot(host)
 
 
+def _decode_response(raw: bytes, content_type: str) -> str:
+    charset = "utf-8"
+    if "charset=" in content_type.lower():
+        try:
+            charset = content_type.lower().split("charset=")[-1].split(";")[0].strip()
+        except Exception:
+            charset = "utf-8"
+    return raw.decode(charset, errors="replace")
+
+
 def _process_response(
     account_id: str,
     account: dict[str, Any],
@@ -137,15 +170,9 @@ def _process_response(
     raw: bytes,
     status_code: int,
     content_type: str,
+    account_source_url: str | None = None,
 ) -> dict[str, Any]:
-    charset = "utf-8"
-    # try to detect charset from content-type header
-    if "charset=" in content_type.lower():
-        try:
-            charset = content_type.lower().split("charset=")[-1].split(";")[0].strip()
-        except Exception:
-            charset = "utf-8"
-    text = raw.decode(charset, errors="replace")
+    text = _decode_response(raw, content_type)
 
     no_history = _source_no_history_message(text)
     if no_history:
@@ -160,11 +187,12 @@ def _process_response(
         if message.get("html"):
             message["base_url"] = source_url
     cache = {
-        "render_version": 2,
+        "render_version": 5,
         "account_id": account.get("id"),
         "email": account.get("email"),
         "source_host": source_host(source_url),
         "source_url": source_url,
+        "account_source_url": account_source_url or source_url,
         "fetched_at": now_iso(),
         "status_code": status_code,
         "content_type": content_type,
@@ -241,7 +269,7 @@ def _mark_no_history(
         if not account:
             return {"ok": False, "error": "邮箱不存在"}
         cache = {
-            "render_version": 2,
+            "render_version": 5,
             "account_id": account.get("id"),
             "email": account.get("email"),
             "source_host": source_host(source_url),

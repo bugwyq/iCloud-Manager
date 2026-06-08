@@ -332,13 +332,32 @@ input:focus,textarea:focus{border-color:var(--accent);box-shadow:0 0 0 2px color
 .detail-subject{font-size:20px;font-weight:750;margin:0 0 10px;line-height:1.25}
 .detail-meta{display:grid;gap:4px;color:var(--muted);font-size:13px;margin-bottom:12px}
 .detail-body{white-space:pre-wrap;line-height:1.55;border:1px solid var(--border);background:var(--panel2);border-radius:8px;padding:12px;overflow:auto;max-height:620px}
+.raw-text-body{margin:0;font-family:ui-monospace,SFMono-Regular,Consolas,"Microsoft YaHei UI",monospace;font-size:14px}
+.code-card{
+  display:flex;
+  align-items:center;
+  justify-content:space-between;
+  gap:12px;
+  margin:0 0 12px;
+  padding:12px;
+  border:1px solid color-mix(in srgb,var(--accent) 58%,var(--border));
+  border-radius:8px;
+  background:linear-gradient(90deg,color-mix(in srgb,var(--accent) 13%,var(--panel)),var(--panel));
+  color:var(--text);
+}
+.code-label{font-size:12px;color:var(--muted);font-weight:700;letter-spacing:.08em}
+.code-value{font-family:ui-monospace,SFMono-Regular,Consolas,monospace;font-size:28px;font-weight:850;line-height:1.1;letter-spacing:0;margin-top:3px}
+.copy-code-btn{min-width:72px}
 .detail.raw-mail-detail{
   padding:0;
   overflow:auto;
   background:#fff;
   box-shadow:var(--shadow);
 }
+.detail.raw-mail-detail.has-code{background:var(--panel)}
 .detail.raw-mail-detail:before,.detail.raw-mail-detail:after{display:none}
+.mail-html-shell{display:grid;grid-template-rows:auto minmax(0,1fr);height:100%;min-height:680px}
+.mail-html-shell>.code-card{margin:12px}
 .mail-frame{
   display:block;
   width:100%;
@@ -405,6 +424,9 @@ input:focus,textarea:focus{border-color:var(--accent);box-shadow:0 0 0 2px color
   .filterGrid,.statsGrid{grid-template-columns:1fr}
   .pager{grid-template-columns:1fr}
   .brand{font-size:18px}
+  .code-card{align-items:flex-start;flex-direction:column}
+  .code-value{font-size:24px;word-break:break-all}
+  .copy-code-btn{width:100%}
   .messages{gap:10px}
   .list{max-height:52vh}
   .login-screen{align-items:flex-end;padding:0}

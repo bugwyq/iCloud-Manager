@@ -26,9 +26,23 @@ def clean_url(raw: str) -> str:
     return text
 
 
+def normalize_source_url(raw: str) -> str:
+    text = clean_url(raw)
+    if not text:
+        return ""
+    parsed = urllib.parse.urlparse(text)
+    if parsed.netloc.lower() != "icloudapi.xyz":
+        return text
+    parts = parsed.path.split("/")
+    if len(parts) < 3 or parts[1].lower() != "query":
+        return text
+    show_path = "/" + "/".join(["show", *parts[2:]])
+    return urllib.parse.urlunparse(parsed._replace(path=show_path))
+
+
 def extract_url(line: str) -> str:
     match = URL_RE.search(line)
-    return clean_url(match.group(0)) if match else ""
+    return normalize_source_url(match.group(0)) if match else ""
 
 
 def source_host(url: str) -> str:
@@ -49,4 +63,3 @@ def html_to_text(value: str) -> str:
     lines = [line.strip() for line in text.splitlines()]
     text = "\n".join(line for line in lines if line)
     return BLANK_LINES_RE.sub("\n\n", text).strip()
-

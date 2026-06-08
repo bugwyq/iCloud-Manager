@@ -247,6 +247,8 @@ class DashboardHandler(BaseHTTPRequestHandler):
 def _cache_needs_original_html(cache: dict[str, Any] | None) -> bool:
     if not cache:
         return False
+    if int(cache.get("render_version") or 0) < 5:
+        return True
     content_type = str(cache.get("content_type") or "").lower()
     parse_mode = str(cache.get("parse_mode") or "").lower()
     if "html" not in content_type and parse_mode != "html":

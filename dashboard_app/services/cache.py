@@ -5,6 +5,7 @@ from pathlib import Path
 from typing import Any
 
 from dashboard_app.config import settings
+from dashboard_app.services.mail_parser import messages_from_response
 from dashboard_app.storage.json_store import ensure_dir, read_json, write_json
 
 
@@ -19,7 +20,12 @@ def has_cache(account_id: str) -> bool:
 
 def load_cache(account_id: str) -> dict[str, Any] | None:
     payload = read_json(cache_path(account_id), None)
-    return payload if isinstance(payload, dict) else None
+    if not isinstance(payload, dict):
+        return None
+    repaired, changed = _repair_legacy_json_body_cache(payload)
+    if changed:
+        save_cache(account_id, repaired)
+    return repaired
 
 
 def save_cache(account_id: str, payload: dict[str, Any]) -> None:
@@ -44,3 +50,47 @@ def clear_cache() -> None:
         except OSError:
             pass
 
+
+def _repair_legacy_json_body_cache(payload: dict[str, Any]) -> tuple[dict[str, Any], bool]:
+    messages = payload.get("messages")
+    if not isinstance(messages, list) or not messages:
+        return payload, False
+
+    repaired_messages: list[dict[str, Any]] = []
+    changed = False
+    account_id = str(payload.get("account_id") or "")
+    for index, message in enumerate(messages):
+        if not isinstance(message, dict):
+            continue
+        body = str(message.get("body") or "").strip()
+        if not body.startswith("{"):
+            repaired_messages.append(message)
+            continue
+        try:
+            parsed_messages, _ = messages_from_response(body, "application/json; charset=utf-8", account_id)
+        except Exception:
+            repaired_messages.append(message)
+            continue
+        if not parsed_messages:
+            repaired_messages.append(message)
+            continue
+        repaired = parsed_messages[0]
+        repaired["id"] = message.get("id") or repaired.get("id") or f"{account_id}-{index}"
+        if not repaired.get("from"):
+            repaired["from"] = message.get("from", "")
+        if not repaired.get("to"):
+            repaired["to"] = message.get("to", "")
+        if not repaired.get("date"):
+            repaired["date"] = message.get("date", "")
+        if message.get("base_url") and repaired.get("html"):
+            repaired["base_url"] = message.get("base_url")
+        repaired_messages.append(repaired)
+        changed = True
+
+    if not changed:
+        return payload, False
+    repaired_payload = dict(payload)
+    repaired_payload["render_version"] = 5
+    repaired_payload["messages"] = repaired_messages
+    repaired_payload["message_count"] = len(repaired_messages)
+    return repaired_payload, True
