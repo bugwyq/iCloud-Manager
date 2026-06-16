@@ -144,7 +144,7 @@ export function AccountsPanel({
 
   return (
     <>
-      <div className="box">
+      <div className="box accountsCard">
         <div className="sectionTitle">邮箱列表</div>
         <div className="row">
           <input
