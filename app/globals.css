@@ -23,6 +23,9 @@
   --sh3:3px 3px 0 rgba(44,44,44,.32);
   --shHover:2px 2px 0 rgba(44,44,44,.5);
   --shFocus:2px 2px 0 rgba(44,44,44,.42);
+  --hi:#9b3a2f;
+  --hiBg:#f3e2da;
+  --shHi:3px 3px 0 rgba(155,58,47,.4);
 }
 [data-theme=dark]{
   color-scheme:dark;
@@ -45,6 +48,9 @@
   --sh3:3px 3px 0 rgba(0,0,0,.55);
   --shHover:2px 2px 0 rgba(0,0,0,.7);
   --shFocus:2px 2px 0 rgba(216,210,196,.45);
+  --hi:#e0897c;
+  --hiBg:#3a2420;
+  --shHi:3px 3px 0 rgba(224,137,124,.45);
 }
 *{box-sizing:border-box}
 html,body{min-height:100%}
@@ -85,8 +91,8 @@ body:after{
 [data-visual=minimal] body:before,[data-visual=minimal] body:after,[data-visual=minimal] .app:before,[data-visual=minimal] .app:after,[data-visual=minimal] .side:before{display:none}
 button,input,textarea{font:inherit}
 button{position:relative;min-height:36px;border:2px dashed var(--accent);background:var(--accent);color:var(--accentText);border-radius:var(--radius);padding:0 14px;cursor:pointer;white-space:nowrap;font-weight:600;box-shadow:var(--sh1);transition:opacity .2s ease,box-shadow .2s ease,transform .12s ease}
-button:hover{box-shadow:var(--sh3);transform:translate(-2px,-2px) rotate(-.4deg)}
-button:hover:not(:disabled):not(.isBusy){animation:sketchWobble .5s ease-in-out infinite}
+button:hover{box-shadow:var(--shHi);transform:translate(-2px,-2px) rotate(-.4deg);border-color:var(--hi)}
+button:hover:not(:disabled):not(.isBusy){animation:sketchWobble .42s ease-in-out infinite}
 button:active{opacity:.8;box-shadow:none;transform:translate(1px,1px);animation:none}
 button:focus-visible{outline:none;box-shadow:var(--shFocus)}
 button.isBusy:after{content:"";width:12px;height:12px;border:2px solid currentColor;border-right-color:transparent;border-radius:999px;margin-left:8px;display:inline-block;vertical-align:-2px;animation:spin .8s linear infinite}
@@ -132,13 +138,13 @@ input:focus,textarea:focus{box-shadow:var(--shFocus);border-color:var(--border)}
 .uploadBox{border:2px dashed var(--lineStrong);border-radius:var(--radius);background:var(--panel2);padding:11px;display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin-bottom:8px}
 .srFile{position:absolute;left:-9999px;width:1px;height:1px;opacity:0}
 .filePick{min-height:34px;padding:0 12px;border:2px dashed var(--lineStrong);border-radius:var(--radius);background:var(--panel);display:inline-flex;align-items:center;gap:8px;cursor:pointer;font-size:13px;box-shadow:var(--sh1);transition:box-shadow .2s ease,transform .12s ease,border-color .15s ease}
-.filePick:hover{box-shadow:var(--sh3);transform:translate(-2px,-2px) rotate(-.4deg);border-color:var(--accent)}
+.filePick:hover{box-shadow:var(--shHi);transform:translate(-2px,-2px) rotate(-.4deg);border-color:var(--hi);color:var(--hi)}
 .fileCode{font-family:"Cascadia Code",ui-monospace,Consolas,monospace;background:var(--accent);color:var(--accentText);border-radius:var(--radius);padding:2px 7px;font-weight:700}
 .fileName{font-size:12px;color:var(--muted);word-break:break-all}
 .aliases{display:flex;flex-direction:column;gap:6px;flex:0 0 clamp(520px,64vh,760px);max-height:clamp(520px,64vh,760px);min-height:360px;overflow:auto;padding-right:4px;overscroll-behavior:contain;scrollbar-gutter:stable}
 .account-item{position:relative;width:100%;border:1.5px dashed var(--line);background:var(--panel);border-radius:var(--radius);padding:9px 11px;color:var(--text);text-align:left;display:grid;grid-template-columns:minmax(0,1fr) auto;align-items:center;gap:3px;min-height:auto;white-space:normal;box-shadow:none;transition:background .15s ease,border-color .15s ease,box-shadow .15s ease,transform .12s ease}
-.account-item:before{content:"";position:absolute;inset:-3px;border:1.5px dashed var(--accent);border-radius:var(--radius);opacity:0;transform:rotate(-.6deg);pointer-events:none;transition:opacity .15s ease}
-.account-item:hover{background:var(--panel2);border-color:var(--accent2);box-shadow:var(--shHover);transform:translate(-1px,-1px)}
+.account-item:before{content:"";position:absolute;inset:-3px;border:1.5px dashed var(--hi);border-radius:var(--radius);opacity:0;transform:rotate(-.6deg);pointer-events:none;transition:opacity .15s ease}
+.account-item:hover{background:var(--hiBg);border-color:var(--hi);box-shadow:var(--shHi);transform:translate(-1px,-1px)}
 .account-item:hover:before{opacity:.55}
 .account-item.active{background:var(--panel3);border-color:var(--accent);box-shadow:var(--sh1)}
 .account-main{min-width:0}
@@ -151,7 +157,7 @@ input:focus,textarea:focus{box-shadow:var(--shFocus);border-color:var(--border)}
 .pill.dim{color:var(--muted);border-color:color-mix(in srgb,var(--border) 45%,transparent);font-weight:500}
 .filterChips{display:flex;gap:4px;flex-wrap:wrap;margin-top:7px}
 .chip{min-height:26px;padding:3px 11px;border:1.5px dashed var(--line);border-radius:var(--radius);background:var(--panel2);color:var(--muted);font-size:11.5px;cursor:pointer;transition:opacity .2s ease,box-shadow .2s ease,transform .12s ease,border-color .15s ease;font-weight:600;white-space:nowrap}
-.chip:hover{box-shadow:var(--sh2);color:var(--text);border-color:var(--accent2);transform:translate(-1px,-1px) rotate(-.5deg)}
+.chip:hover{box-shadow:var(--shHi);color:var(--hi);border-color:var(--hi);background:var(--hiBg);transform:translate(-1px,-1px) rotate(-.5deg)}
 .chip.active{background:var(--accent);color:var(--accentText);border-color:var(--accent)}
 .mailTools{padding:0}
 .mailTools>.foldBody{display:grid;gap:8px}
@@ -162,10 +168,10 @@ input:focus,textarea:focus{box-shadow:var(--shFocus);border-color:var(--border)}
 .list,.detail{overflow:auto}
 .mail-list,.mail-detail{min-height:0}
 .mail-item{position:relative;width:100%;border:0;border-bottom:1px solid var(--lineStrong);background:transparent;color:var(--text);text-align:left;padding:12px 14px 12px 18px;display:grid;gap:6px;white-space:normal;min-height:auto;border-radius:0;box-shadow:none;transition:background .15s ease,padding .15s ease}
-.mail-item:before{content:"";position:absolute;left:6px;top:14px;bottom:14px;width:0;border-left:2px dashed var(--accent);opacity:0;transition:opacity .15s ease}
-.mail-item:hover{background:var(--panel2);padding-left:22px}
-.mail-item:hover:before{opacity:.7}
-.mail-item:hover .mail-subject{text-decoration:underline wavy var(--accent2) 1px;text-underline-offset:3px}
+.mail-item:before{content:"";position:absolute;left:6px;top:14px;bottom:14px;width:0;border-left:2px dashed var(--hi);opacity:0;transition:opacity .15s ease}
+.mail-item:hover{background:var(--hiBg);padding-left:22px}
+.mail-item:hover:before{opacity:.85}
+.mail-item:hover .mail-subject{color:var(--hi);text-decoration:underline wavy var(--hi) 1px;text-underline-offset:3px}
 .mail-item.active{background:var(--panel3)}
 .mail-item.active:before{opacity:1}
 .mail-subject{font-weight:700;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
@@ -217,9 +223,11 @@ input:focus,textarea:focus{box-shadow:var(--shFocus);border-color:var(--border)}
 @keyframes spin{to{transform:rotate(360deg)}}
 @keyframes toastIn{to{transform:translateY(0);opacity:1}}
 @keyframes sketchWobble{
-  0%{transform:translate(-2px,-2px) rotate(-.4deg)}
-  50%{transform:translate(-2px,-2px) rotate(.5deg)}
-  100%{transform:translate(-2px,-2px) rotate(-.4deg)}
+  0%{transform:translate(-3px,-3px) rotate(-1.4deg)}
+  25%{transform:translate(-2px,-3px) rotate(1deg)}
+  50%{transform:translate(-3px,-2px) rotate(1.6deg)}
+  75%{transform:translate(-2px,-3px) rotate(-.8deg)}
+  100%{transform:translate(-3px,-3px) rotate(-1.4deg)}
 }
 @media (prefers-reduced-motion:reduce){
   button:hover:not(:disabled):not(.isBusy){animation:none}
