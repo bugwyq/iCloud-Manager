@@ -1,5 +1,5 @@
 # ── 数据目录（账号库 + 邮件缓存，含敏感信息） ──
-data/
+data/mail_cache
 
 # ── Python ──
 __pycache__/
@@ -12,7 +12,6 @@ build/
 .eggs/
 
 # ── Frontend build/install output ──
-node_modules/
 .next/
 tsconfig.tsbuildinfo
 
