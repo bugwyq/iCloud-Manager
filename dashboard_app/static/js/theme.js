@@ -19,31 +19,6 @@ export function setupTheme() {
     syncButtons();
   });
 
-  $("copy-name-btn")?.addEventListener("click", async () => {
-    const button = $("copy-name-btn");
-    const value = button?.dataset.emailName || "";
-    if (!value) return;
-    try {
-      if (navigator.clipboard?.writeText) {
-        await navigator.clipboard.writeText(value);
-      } else {
-        const input = document.createElement("textarea");
-        input.value = value;
-        input.style.position = "fixed";
-        input.style.left = "-9999px";
-        document.body.append(input);
-        input.select();
-        document.execCommand("copy");
-        input.remove();
-      }
-      button.textContent = "已复制";
-    } catch {
-      button.textContent = "复制失败";
-    }
-    window.setTimeout(() => {
-      button.textContent = "复制邮箱名";
-    }, 1200);
-  });
 }
 
 function syncButtons() {

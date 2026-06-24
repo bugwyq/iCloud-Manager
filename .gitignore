@@ -12,6 +12,7 @@ build/
 .eggs/
 
 # ── Frontend build/install output ──
+node_modules/
 .next/
 tsconfig.tsbuildinfo
 

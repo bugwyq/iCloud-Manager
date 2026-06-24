@@ -107,6 +107,8 @@ input:focus,textarea:focus{box-shadow:var(--shFocus);border-color:var(--border)}
 .main{position:relative;padding:16px;display:grid;grid-template-rows:auto auto minmax(0,1fr);gap:12px;min-width:0;min-height:0;overflow:hidden}
 .main>*{position:relative;z-index:2}
 .brand{font-size:20px;font-weight:700;word-break:break-all;line-height:1.25;letter-spacing:.02em}
+.titleCopy{cursor:pointer}
+.titleCopy:hover{color:var(--accent)}
 .muted{color:var(--muted);font-size:13px}
 .box,.list,.detail{position:relative;background:var(--panel);border:2px dashed var(--lineStrong);border-radius:var(--radius);box-shadow:var(--sh2)}
 .box{padding:12px}

@@ -462,6 +462,27 @@ function bindEvents() {
   $("fetch-btn").addEventListener("click", () => fetchSelected(true));
   $("clear-cache-btn").addEventListener("click", clearSelectedCache);
   $("delete-btn").addEventListener("click", deleteSelected);
+  $("mail-title").addEventListener("click", async () => {
+    const email = $("mail-title").dataset.email || "";
+    if (!email) return;
+    try {
+      if (navigator.clipboard?.writeText) {
+        await navigator.clipboard.writeText(email);
+      } else {
+        const input = document.createElement("textarea");
+        input.value = email;
+        input.style.position = "fixed";
+        input.style.left = "-9999px";
+        document.body.append(input);
+        input.select();
+        document.execCommand("copy");
+        input.remove();
+      }
+      toast("邮箱已复制", "success");
+    } catch {
+      toast("复制失败", "error");
+    }
+  });
   $("import-btn").addEventListener("click", importText);
   $("clear-log-btn").addEventListener("click", () => {$("log-list").innerHTML = "";});
   $("file-input").addEventListener("change", async (event) => {

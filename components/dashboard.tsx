@@ -47,6 +47,27 @@ export function Dashboard() {
   const fetchDisabled = !account || !account.has_source || d.busy
   const clearDisabled = !account || !account.cached || d.busy
   const deleteDisabled = !account || d.busy
+  const copyCurrentEmail = async () => {
+    const email = account?.email || ""
+    if (!email) return
+    try {
+      if (navigator.clipboard?.writeText) {
+        await navigator.clipboard.writeText(email)
+      } else {
+        const input = document.createElement("textarea")
+        input.value = email
+        input.style.position = "fixed"
+        input.style.left = "-9999px"
+        document.body.append(input)
+        input.select()
+        document.execCommand("copy")
+        input.remove()
+      }
+      d.toast("邮箱已复制", "success")
+    } catch {
+      d.toast("复制失败", "error")
+    }
+  }
 
   return (
     <>
@@ -106,7 +127,18 @@ export function Dashboard() {
         <main className="main">
           <div className="top">
             <div>
-              <div className="brand">{headerTitle}</div>
+              {account ? (
+                <button
+                  className="brand titleCopy"
+                  type="button"
+                  onClick={copyCurrentEmail}
+                  title="点击复制完整邮箱"
+                >
+                  {headerTitle}
+                </button>
+              ) : (
+                <div className="brand">{headerTitle}</div>
+              )}
               <div className="muted">{headerSub}</div>
             </div>
             <div className="toolbar topActions">
@@ -137,7 +169,7 @@ export function Dashboard() {
               >
                 删除邮箱
               </button>
-              <ThemeControls email={account?.email || ""} />
+              <ThemeControls />
             </div>
           </div>
 
