@@ -1,16 +1,20 @@
 "use client"
 
-import { useEffect, useState } from "react"
+import { useEffect, useMemo, useState } from "react"
 
-export function ThemeControls() {
+export function ThemeControls({ email = "" }: { email?: string }) {
   const [isDark, setIsDark] = useState(false)
-  const [isMinimal, setIsMinimal] = useState(false)
+  const [copyLabel, setCopyLabel] = useState("复制邮箱名")
+  const emailName = useMemo(() => String(email || "").split("@")[0] || "", [email])
 
   useEffect(() => {
     const root = document.documentElement
     setIsDark(root.getAttribute("data-theme") === "dark")
-    setIsMinimal(root.getAttribute("data-visual") === "minimal")
   }, [])
+
+  useEffect(() => {
+    setCopyLabel("复制邮箱名")
+  }, [emailName])
 
   const toggleTheme = () => {
     const root = document.documentElement
@@ -25,13 +29,26 @@ export function ThemeControls() {
     setIsDark(!dark)
   }
 
-  const toggleVisual = () => {
-    const root = document.documentElement
-    const minimal = root.getAttribute("data-visual") === "minimal"
-    const next = minimal ? "moyu" : "minimal"
-    root.setAttribute("data-visual", next)
-    localStorage.setItem("icloud-panel-visual", next)
-    setIsMinimal(!minimal)
+  const copyEmailName = async () => {
+    if (!emailName) return
+    try {
+      if (navigator.clipboard?.writeText) {
+        await navigator.clipboard.writeText(emailName)
+      } else {
+        const input = document.createElement("textarea")
+        input.value = emailName
+        input.style.position = "fixed"
+        input.style.left = "-9999px"
+        document.body.append(input)
+        input.select()
+        document.execCommand("copy")
+        input.remove()
+      }
+      setCopyLabel("已复制")
+    } catch {
+      setCopyLabel("复制失败")
+    }
+    window.setTimeout(() => setCopyLabel("复制邮箱名"), 1200)
   }
 
   return (
@@ -39,8 +56,14 @@ export function ThemeControls() {
       <button className="secondary" type="button" onClick={toggleTheme}>
         {isDark ? "浅色" : "深色"}
       </button>
-      <button className="secondary" type="button" onClick={toggleVisual}>
-        {isMinimal ? "手绘模式" : "极简模式"}
+      <button
+        className="secondary"
+        type="button"
+        disabled={!emailName}
+        onClick={copyEmailName}
+        title={emailName ? `复制 ${emailName}` : "请选择邮箱"}
+      >
+        {copyLabel}
       </button>
     </>
   )

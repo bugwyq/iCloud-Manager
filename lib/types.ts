@@ -1,6 +1,8 @@
 export interface Account {
   id: string
   email: string
+  main_mailbox?: string
+  source_host?: string
   has_source?: boolean
   cached?: boolean
   no_history?: boolean
@@ -16,6 +18,31 @@ export interface Stats {
   cached?: number
   messages?: number
   errors?: number
+  main_mailboxes?: number
+}
+
+export interface MainMailboxOption {
+  name: string
+  count: number
+}
+
+export interface MailSource {
+  id?: string
+  name: string
+  email: string
+  imap_host: string
+  imap_port: number
+  username: string
+  use_ssl: boolean
+  folder: string
+  enabled: boolean
+  max_results: number
+  has_password?: boolean
+  password?: string
+  created_at?: string
+  updated_at?: string
+  last_error?: string
+  last_test_at?: string
 }
 
 export interface SourceSnapshot {
@@ -80,6 +107,8 @@ export interface StateResponse {
   ok: boolean
   stats?: Stats
   accounts?: Account[]
+  main_mailboxes?: MainMailboxOption[]
+  mail_sources?: MailSource[]
   scan?: Scan
 }
 

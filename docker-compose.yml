@@ -1,0 +1,15 @@
+services:
+  icloud-manager:
+    build: .
+    container_name: icloud-manager
+    restart: unless-stopped
+    env_file:
+      - path: .env
+        required: false
+    ports:
+      - "${APP_BIND:-127.0.0.1}:${APP_PORT:-17607}:17607"
+    volumes:
+      - icloud-manager-data:/app/data
+
+volumes:
+  icloud-manager-data:

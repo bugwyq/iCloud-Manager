@@ -12,6 +12,8 @@ class Settings:
     data_dir: Path
     cache_dir: Path
     accounts_path: Path
+    app_config_path: Path
+    mail_sources_path: Path
     template_path: Path
     static_dir: Path
     web_dir: Path
@@ -26,10 +28,13 @@ class Settings:
     fetch_retries: int = 4
     retry_pass_delay: int = 30  # seconds to wait before auto retry pass
     max_retry_passes: int = 3  # max auto retry phases
+    public_base_url: str = ""
+    viewer_token: str = ""
 
 
 PACKAGE_DIR = Path(__file__).resolve().parent
 ROOT = PACKAGE_DIR.parent
+DATA_DIR = Path(os.environ.get("ICLOUD_DATA_DIR", str(ROOT / "data"))).resolve()
 
 
 def _env_int(name: str, default: int, minimum: int, maximum: int) -> int:
@@ -43,9 +48,11 @@ def _env_int(name: str, default: int, minimum: int, maximum: int) -> int:
 settings = Settings(
     root=ROOT,
     package_dir=PACKAGE_DIR,
-    data_dir=ROOT / "data",
-    cache_dir=ROOT / "data" / "mail_cache",
-    accounts_path=ROOT / "data" / "accounts.json",
+    data_dir=DATA_DIR,
+    cache_dir=DATA_DIR / "mail_cache",
+    accounts_path=DATA_DIR / "accounts.json",
+    app_config_path=DATA_DIR / "app_config.json",
+    mail_sources_path=DATA_DIR / "mail_sources.json",
     template_path=PACKAGE_DIR / "templates" / "index.html",
     static_dir=PACKAGE_DIR / "static",
     web_dir=ROOT / "out",
@@ -55,4 +62,6 @@ settings = Settings(
     fetch_retries=_env_int("ICLOUD_FETCH_RETRIES", 4, 0, 8),
     retry_pass_delay=_env_int("ICLOUD_RETRY_DELAY", 30, 5, 300),
     max_retry_passes=_env_int("ICLOUD_MAX_RETRY_PASSES", 3, 1, 10),
+    public_base_url=os.environ.get("ICLOUD_PUBLIC_BASE_URL", "").rstrip("/"),
+    viewer_token=os.environ.get("ICLOUD_VIEWER_TOKEN", ""),
 )

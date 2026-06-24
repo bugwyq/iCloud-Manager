@@ -4,21 +4,21 @@ import "./globals.css"
 
 export const metadata: Metadata = {
   title: "iCloud邮箱管理面板",
-  description: "批量归档 · 快速选箱 · 历史邮件取阅",
+  description: "iCloud Hide My Email 管理、检索与导出",
 }
 
 export const viewport: Viewport = {
   width: "device-width",
   initialScale: 1,
   viewportFit: "cover",
-  themeColor: "#efe7d6",
+  themeColor: "#eef8ff",
 }
 
 const themeInit = `(function(){try{
   var t=localStorage.getItem("icloud-panel-theme")||"";
-  var v=localStorage.getItem("icloud-panel-visual")||"moyu";
   if(t)document.documentElement.setAttribute("data-theme",t);
-  document.documentElement.setAttribute("data-visual",v);
+  localStorage.removeItem("icloud-panel-visual");
+  document.documentElement.setAttribute("data-visual","moyu");
 }catch(e){document.documentElement.setAttribute("data-visual","moyu");}})();`
 
 export default function RootLayout({ children }: { children: ReactNode }) {

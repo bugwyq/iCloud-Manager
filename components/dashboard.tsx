@@ -67,19 +67,35 @@ export function Dashboard() {
 
           <ImportPanel
             importing={d.importing}
+            mailSources={d.mailSources}
+            mainMailboxes={d.mainMailboxes}
+            defaultMainMailbox={d.mainMailboxFilter}
             onImport={d.importText}
+            onSaveMailSource={d.saveMailSource}
+            onTestMailSource={d.testMailSource}
+            onDeleteMailSource={d.deleteMailSource}
             onLog={d.addLog}
             onToast={d.toast}
           />
 
           <AccountsPanel
             accounts={d.accounts}
+            mainMailboxes={d.mainMailboxes}
             selectedId={d.selectedId}
+            selectedIds={d.selectedAccountIds}
             search={d.accountSearch}
             setSearch={d.setAccountSearch}
             filter={d.accountFilter}
             setFilter={d.setAccountFilter}
+            mainMailboxFilter={d.mainMailboxFilter}
+            setMainMailboxFilter={d.setMainMailboxFilter}
             onSelect={d.selectAccount}
+            onToggleSelection={d.toggleAccountSelection}
+            onSelectVisible={d.selectVisibleAccounts}
+            onClearSelection={d.clearAccountSelection}
+            onDeleteSelected={d.deleteSelectedAccounts}
+            onDeleteMainMailbox={d.deleteMainMailboxAccounts}
+            onExportSelected={d.exportSelectedAccounts}
             onReload={d.reload}
             onLogout={d.logout}
           />
@@ -121,7 +137,7 @@ export function Dashboard() {
               >
                 删除邮箱
               </button>
-              <ThemeControls />
+              <ThemeControls email={account?.email || ""} />
             </div>
           </div>
 

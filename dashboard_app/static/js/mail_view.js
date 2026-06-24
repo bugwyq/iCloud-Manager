@@ -4,12 +4,23 @@ export function updateMailboxHeader(account, cache, busy = false) {
   $("fetch-btn").disabled = !account || !account.has_source || busy;
   $("clear-cache-btn").disabled = !account || !account.cached || busy;
   $("delete-btn").disabled = !account || busy;
+  const copyNameBtn = $("copy-name-btn");
   if (!account) {
     $("mail-title").textContent = "请选择邮箱";
     $("mail-sub").textContent = "选择左侧邮箱后查看历史邮件";
+    if (copyNameBtn) {
+      copyNameBtn.disabled = true;
+      copyNameBtn.textContent = "复制邮箱名";
+      copyNameBtn.dataset.emailName = "";
+    }
     return;
   }
   $("mail-title").textContent = account.email;
+  if (copyNameBtn) {
+    copyNameBtn.disabled = false;
+    copyNameBtn.textContent = "复制邮箱名";
+    copyNameBtn.dataset.emailName = String(account.email || "").split("@")[0] || "";
+  }
   const count = cache?.message_count ?? account.last_message_count ?? 0;
   const fetched = cache?.fetched_at || account.last_fetch_at;
   const noHistory = Boolean(cache?.no_history || account.no_history);

@@ -1,130 +1,109 @@
-# iCloud 邮箱管理面板
+# iCloud-Manager
 
-本地 Web 控制台，用来批量导入 iCloud 邮箱、快速选择邮箱、查看历史邮件。
+iCloud Hide My Email 管理面板。它可以批量导入 iCloud 子邮箱、按主邮箱分组管理、搜索筛选、批量删除、批量导出查看链接，并直接通过主邮箱 IMAP 收取发给子邮箱的邮件。
 
-**纯本地运行，不依赖外部数据库，不保存 Apple ID 密码。**
+现在只需要部署 iCloud-Manager 本体，不再依赖外部 mail-viewer 服务。
+
+## 功能
+
+- 保留原来的 `邮箱----链接` 导入格式，同时支持只有邮箱的导入格式，例如 `alias@icloud.com`。
+- 在页面中配置主邮箱 IMAP 收信源，子邮箱会按选择的主邮箱关联并从该主邮箱里搜索邮件。
+- 列表支持主邮箱筛选、名称/邮箱模糊查询、分页展示、自由多选、全选当前页、全选筛选结果。
+- 支持批量删除选中邮箱，也支持按主邮箱删除全部关联子邮箱。
+- 支持批量导出选中邮箱，格式为 `alias@icloud.com----http://your-host:17607/show/alias%40icloud.com`。
+- `/show/{alias}` 是 iCloud-Manager 内置邮件查看页，会直接用配置好的 IMAP 收信源拉取邮件。
+- 支持 Docker 部署，数据保存在 `data/` 或 Docker volume 中。
 
 ## 快速开始
 
 ```bash
-# 1. 克隆仓库
-git clone <repo-url> iCloud邮箱管理面板
-cd iCloud邮箱管理面板
-
-# 2. (推荐) 设置面板密码
-#    PowerShell: $env:ICLOUD_PANEL_PASSWORD="你的密码"
-#    Linux/macOS: export ICLOUD_PANEL_PASSWORD="你的密码"
-
-# 3. 启动面板
+npm install
+npm run build
 python start_panel.py
 ```
 
-浏览器会自动打开 `http://127.0.0.1:8799/`。
+默认访问地址：
 
-## 密码设置
-
-| 方式 | 说明 |
-|------|------|
-| 环境变量 | `ICLOUD_PANEL_PASSWORD`— 启动前设置即可 |
-| .env 文件 | 复制 `.env.example` 为 `.env`，填入密码 |
-| 什么都不做 | 默认密码 `changeme`（启动时有醒目警告） |
-
-详细环境变量见 [`.env.example`](.env.example)。
-
-## 导入邮箱
-
-### 面板导入
-
-启动面板后，在左侧「批量导入」区域粘贴或上传 TXT 文件：
-
-```
-name@icloud.com----http://example.com/show/.../name@icloud.com
-another@icloud.com----https://other.example/mail/another@icloud.com
+```text
+http://127.0.0.1:17607/
 ```
 
-一行一个账号，格式为 `邮箱----收信链接`。
+默认面板密码是 `changeme`，部署前请通过 `.env` 或环境变量修改 `ICLOUD_PANEL_PASSWORD`。
 
-- 非 `@icloud.com` 邮箱会被自动跳过
-- 重复邮箱会跳过（除非收信链接有变化）
+## 环境变量
 
-### 命令行导入（不启动面板）
+复制 `.env.example` 为 `.env` 后修改：
 
 ```bash
-python start_panel.py --import-file "邮箱列表.txt" --import-only
+ICLOUD_PANEL_PASSWORD=your-panel-password
+ICLOUD_PUBLIC_BASE_URL=http://your-host:17607
+# ICLOUD_VIEWER_TOKEN=optional-token
 ```
 
-## 查看邮件
+- `ICLOUD_PUBLIC_BASE_URL` 用于批量导出 `/show/...` 链接。不填时默认导出 `http://127.0.0.1:17607`。
+- `ICLOUD_VIEWER_TOKEN` 可选。设置后导出的 `/show/...` 链接会自动带 `?key=...`，访问查看页也会校验这个 key。
 
-1. 左侧选择邮箱
-2. 右侧会自动加载本地缓存的邮件
-3. 点击「刷新邮件」从源站拉取最新邮件
+## 主邮箱收信源
 
-邮件按需拉取并缓存到本地，后续查看不需要重新拉取。
+在页面左侧「批量导入」里的「主邮箱收信源」配置：
 
-## 扫描历史邮件
+- 名称：用于分组和导入时选择，例如 `main@icloud.com`
+- 主邮箱：真实收信的主邮箱地址
+- IMAP 服务器：iCloud 通常为 `imap.mail.me.com`
+- 端口：SSL 通常为 `993`
+- 用户名：通常为主邮箱地址
+- 密码 / 授权码：建议使用 Apple 应用专用密码
+- 邮箱目录：通常为 `INBOX`
 
-点击「扫描历史」会遍历所有未缓存的邮箱，逐个拉取邮件。扫描支持：
+导入子邮箱时选择对应主邮箱，之后刷新、扫描、`/show/...` 都会从这个主邮箱里搜索发给子邮箱的邮件。
 
-- **自动重试**：失败的账号 30 秒后自动重试，最多 3 轮
-- **重试失败**：扫描结束后可点击「重试失败」只重试上一次失败的
-- **取消扫描**：扫描期间可随时取消
+## 导入格式
 
-## 数据位置
-
-所有数据都存储在项目目录下的 `data/` 文件夹中：
-
-| 文件 | 说明 |
-|------|------|
-| `data/accounts.json` | 邮箱账号库（导入的账号信息） |
-| `data/mail_cache/*.json` | 邮件缓存（拉取过的邮件内容） |
-
-**这些包含你的实际数据，Git 已通过 `.gitignore` 排除，不会被提交。**
-
-## 项目结构
-
-```
-dashboard_app/
-├── config.py              # 配置（路径、并发、超时等）
-├── server.py              # 启动入口
-├── http_server.py         # HTTP 路由与鉴权
-├── services/
-│   ├── accounts.py        # 邮箱账号库
-│   ├── importer.py        # TXT 导入解析
-│   ├── mail_fetcher.py    # 收信拉取（HTTP）
-│   ├── mail_parser.py     # 邮件格式解析
-│   ├── scan_jobs.py       # 批量扫描任务
-│   ├── cache.py           # 本地邮件缓存
-│   └── sessions.py        # 面板登录会话
-├── storage/
-│   └── json_store.py      # JSON 文件读写
-├── utils/
-│   └── text.py            # 文本处理工具
-├── templates/
-│   └── index.html         # 页面结构
-└── static/
-    ├── css/app.css         # 控制台样式
-    └── js/*.js             # 前端交互模块
+```text
+alias-a@icloud.com
+alias-b@icloud.com----http://legacy.example/show/alias-b%40icloud.com
 ```
 
-## 系统要求
+旧链接格式会被兼容保存，但实际收信以页面配置的主邮箱 IMAP 收信源为准。
 
-- Python 3.10+
-- 仅使用 Python 标准库，无需 `pip install`
+## 批量导出
+
+在邮箱列表勾选需要导出的子邮箱，点击「批量导出选中」。导出的 TXT 每行类似：
+
+```text
+alias@icloud.com----http://your-host:17607/show/alias%40icloud.com
+```
+
+部署时配置 `ICLOUD_PUBLIC_BASE_URL` 后，导出链接会使用该公开地址。
+
+## Docker
+
+```bash
+cp .env.example .env
+docker compose up -d --build
+```
+
+访问：
+
+```text
+http://YOUR_SERVER_IP:17607/
+```
+
+数据保存在 Docker volume `icloud-manager-data`。
+
+## 数据文件
+
+```text
+data/accounts.json       子邮箱账号数据
+data/mail_sources.json   主邮箱 IMAP 收信源
+data/mail_cache/*.json   邮件缓存
+```
+
+这些文件包含你的真实邮箱数据和 IMAP 授权信息，请不要提交到 Git。
 
 ## 安全说明
 
-- **不保存 Apple ID 或密码** — 只有邮箱地址和收信链接
-- **纯本地运行** — 面板绑定 `127.0.0.1`，只有本机能访问
-- **会话管理** — 采用 HttpOnly Cookie + 本地会话文件
-- **数据独占** — `data/` 目录权限设为 `0600`
-
-## 后续可扩展方向
-
-- 接入真实 iCloud IMAP（`mail_fetcher.py` 扩展为 provider 模式）
-- 替换 JSON 为 SQLite（数据量大时）
-- 支持多用户登录
-- 更多导入格式（CSV、JSON 等）
-
-## License
-
-MIT
+- 面板使用 `ICLOUD_PANEL_PASSWORD` 登录。
+- IMAP 密码或授权码只保存在本项目的数据目录中。
+- `/show/...` 可通过 `ICLOUD_VIEWER_TOKEN` 加访问 key。
+- 建议生产环境只通过 HTTPS 暴露服务。

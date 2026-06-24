@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import html
 import hmac
 import json
 import mimetypes
@@ -15,17 +16,34 @@ from dashboard_app.config import settings
 from dashboard_app.services.accounts import (
     account_stats,
     ensure_storage,
+    export_accounts,
     find_account,
     load_accounts,
+    main_mailbox_options,
     public_account,
     public_accounts,
     remove_account,
+    remove_accounts,
+    remove_by_main_mailbox,
 )
 from dashboard_app.services.cache import clear_cache, delete_cache, load_cache
 from dashboard_app.services.importer import parse_import_text
-from dashboard_app.services.mail_fetcher import cache_has_source_error, fetch_mail_for_account
+from dashboard_app.services.links import build_show_url
+from dashboard_app.services.mail_fetcher import (
+    cache_has_source_error,
+    fetch_mail_for_account,
+    fetch_mail_for_email,
+)
+from dashboard_app.services.mail_sources import (
+    delete_source,
+    load_sources,
+    public_sources,
+    save_source,
+)
+from dashboard_app.services.imap_mail import test_source
 from dashboard_app.services.scan_jobs import cancel_scan, retry_failed, scan_failed_ids, scan_status, start_scan, start_scan_all
 from dashboard_app.services.sessions import issue_session, revoke_session, validate_session
+from dashboard_app.utils.text import extract_email
 
 
 _LOGIN_FAILURES: dict[str, list[float]] = {}
@@ -103,6 +121,9 @@ class DashboardHandler(BaseHTTPRequestHandler):
         if path == "/api/session":
             self._send_json({"ok": True, "authenticated": self._authenticated()})
             return
+        if path == "/show" or path.startswith("/show/"):
+            self._serve_show_page(path, query)
+            return
         if not path.startswith("/api/"):
             self._serve_frontend(path)
             return
@@ -115,8 +136,13 @@ class DashboardHandler(BaseHTTPRequestHandler):
                 "ok": True,
                 "stats": account_stats(accounts),
                 "accounts": public_accounts(accounts),
+                "main_mailboxes": main_mailbox_options(accounts),
+                "mail_sources": public_sources(),
                 "scan": scan_status(),
             })
+            return
+        if path == "/api/mail_sources":
+            self._send_json({"ok": True, "mail_sources": public_sources()})
             return
         if path == "/api/scan_status":
             self._send_json({"ok": True, "scan": scan_status()})
@@ -132,7 +158,7 @@ class DashboardHandler(BaseHTTPRequestHandler):
                 return
             cache = load_cache(account_id)
             needs_source_refresh = cache_has_source_error(cache) or _cache_needs_source_snapshot(cache)
-            if needs_source_refresh and account.get("source_url"):
+            if needs_source_refresh:
                 refreshed = fetch_mail_for_account(account_id, force=True, record_error=False)
                 if refreshed.get("ok"):
                     self._send_json(refreshed)
@@ -167,12 +193,56 @@ class DashboardHandler(BaseHTTPRequestHandler):
 
         if path == "/api/import":
             text = str(payload.get("text") or "")
+            main_mailbox = str(payload.get("main_mailbox") or "")
             if not text.strip():
                 self._send_json({"ok": False, "error": "导入内容为空"}, status=400)
                 return
-            result = parse_import_text(text)
+            result = parse_import_text(text, main_mailbox=main_mailbox)
             result["scan"] = start_scan(result.get("scan_ids") or [], reason="import")
             self._send_json(result)
+            return
+        if path == "/api/mail_sources":
+            try:
+                source = save_source(payload)
+            except ValueError as exc:
+                self._send_json({"ok": False, "error": str(exc)}, status=400)
+                return
+            accounts = load_accounts()
+            self._send_json({
+                "ok": True,
+                "mail_source": source,
+                "mail_sources": public_sources(),
+                "accounts": public_accounts(accounts),
+                "stats": account_stats(accounts),
+                "main_mailboxes": main_mailbox_options(accounts),
+            })
+            return
+        if path == "/api/delete_mail_source":
+            removed, sources = delete_source(str(payload.get("id") or ""))
+            if not removed:
+                self._send_json({"ok": False, "error": "收信源不存在"}, status=404)
+                return
+            accounts = load_accounts()
+            self._send_json({
+                "ok": True,
+                "mail_sources": sources,
+                "accounts": public_accounts(accounts),
+                "stats": account_stats(accounts),
+                "main_mailboxes": main_mailbox_options(accounts),
+            })
+            return
+        if path == "/api/test_mail_source":
+            try:
+                source = save_source(payload)
+                stored = _private_source_by_id(str(source.get("id") or ""))
+                test_source(stored or payload)
+            except ValueError as exc:
+                self._send_json({"ok": False, "error": str(exc)}, status=400)
+                return
+            except Exception as exc:
+                self._send_json({"ok": False, "error": f"IMAP 测试失败：{exc}"}, status=400)
+                return
+            self._send_json({"ok": True, "mail_source": source, "mail_sources": public_sources()})
             return
         if path == "/api/scan_start":
             scope = str(payload.get("scope") or "all").strip().lower()
@@ -198,7 +268,52 @@ class DashboardHandler(BaseHTTPRequestHandler):
             if not removed:
                 self._send_json({"ok": False, "error": "邮箱不存在"}, status=404)
                 return
-            self._send_json({"ok": True, "stats": account_stats(accounts), "accounts": public_accounts(accounts)})
+            self._send_json({
+                "ok": True,
+                "stats": account_stats(accounts),
+                "accounts": public_accounts(accounts),
+                "main_mailboxes": main_mailbox_options(accounts),
+            })
+            return
+        if path == "/api/delete_accounts":
+            raw_ids = payload.get("ids") if isinstance(payload.get("ids"), list) else []
+            count, accounts = remove_accounts([str(item) for item in raw_ids])
+            if not count:
+                self._send_json({"ok": False, "error": "没有选中可删除的邮箱"}, status=400)
+                return
+            self._send_json({
+                "ok": True,
+                "deleted": count,
+                "stats": account_stats(accounts),
+                "accounts": public_accounts(accounts),
+                "main_mailboxes": main_mailbox_options(accounts),
+            })
+            return
+        if path == "/api/delete_by_main_mailbox":
+            main_mailbox = str(payload.get("main_mailbox") or "").strip()
+            count, accounts = remove_by_main_mailbox(main_mailbox)
+            if not count:
+                self._send_json({"ok": False, "error": "没有找到这个主邮箱关联的子邮箱"}, status=404)
+                return
+            self._send_json({
+                "ok": True,
+                "deleted": count,
+                "stats": account_stats(accounts),
+                "accounts": public_accounts(accounts),
+                "main_mailboxes": main_mailbox_options(accounts),
+            })
+            return
+        if path == "/api/export_accounts":
+            raw_ids = payload.get("ids") if isinstance(payload.get("ids"), list) else []
+            text = export_accounts([str(item) for item in raw_ids])
+            if not text.strip():
+                self._send_json({"ok": False, "error": "没有可导出的邮箱"}, status=400)
+                return
+            self._send_json({
+                "ok": True,
+                "text": text,
+                "filename": f"icloud-mail-links-{time.strftime('%Y%m%d-%H%M%S')}.txt",
+            })
             return
         if path == "/api/clear_cache":
             account_id = str(payload.get("id") or "")
@@ -243,6 +358,53 @@ class DashboardHandler(BaseHTTPRequestHandler):
         cookie = f"{settings.session_cookie}=; Path=/; Max-Age=0; HttpOnly; SameSite=Lax"
         self._send_json({"ok": True}, headers={"Set-Cookie": cookie})
 
+    def _serve_show_page(self, path: str, query: dict[str, list[str]]) -> None:
+        token = str(settings.viewer_token or "").strip()
+        if token:
+            key = (query.get("key") or [""])[0]
+            if not hmac.compare_digest(key, token):
+                self._send_show_html("访问密钥不正确", "", [], "请检查导出链接里的 key 参数。", status=403)
+                return
+
+        raw_email = ""
+        if path.startswith("/show/"):
+            raw_email = urllib.parse.unquote(path.removeprefix("/show/"))
+        if not raw_email:
+            raw_email = (query.get("email") or [""])[0]
+        alias = extract_email(raw_email)
+        if not alias:
+            self._send_show_html("邮箱格式不正确", "", [], "请检查 /show/ 后面的邮箱地址。", status=400)
+            return
+
+        account = next((item for item in load_accounts() if str(item.get("email") or "").lower() == alias), None)
+        result: dict[str, Any]
+        if account:
+            result = fetch_mail_for_account(str(account.get("id") or ""), force=True, record_error=False)
+        else:
+            result = fetch_mail_for_email(alias)
+
+        if not result.get("ok"):
+            self._send_show_html(alias, "", [], str(result.get("error") or "收信失败"), status=502)
+            return
+        cache = result.get("cache") or {}
+        messages = cache.get("messages") if isinstance(cache, dict) else []
+        if not isinstance(messages, list):
+            messages = []
+        note = str(cache.get("message") or "") if isinstance(cache, dict) else ""
+        self._send_show_html(alias, str(cache.get("fetched_at") or ""), messages, note)
+
+    def _send_show_html(
+        self,
+        title: str,
+        fetched_at: str,
+        messages: list[Any],
+        note: str = "",
+        *,
+        status: int = 200,
+    ) -> None:
+        body = _render_show_page(title, fetched_at, messages, note)
+        self._send_bytes(body.encode("utf-8"), "text/html; charset=utf-8", status=status)
+
     def _serve_frontend(self, url_path: str) -> None:
         web_dir = settings.web_dir
         index_file = web_dir / "index.html"
@@ -285,7 +447,7 @@ class DashboardHandler(BaseHTTPRequestHandler):
             mime = "text/javascript"
         if target.suffix in {".js", ".css", ".html", ".json", ".svg"}:
             mime = f"{mime}; charset=utf-8"
-        # Long-cache hashed Next.js assets, never cache HTML.
+        # Production builds use hashed Next.js assets, so they can be cached aggressively.
         cache = "public, max-age=31536000, immutable" if "/_next/static/" in target.as_posix() else "no-store"
         self._send_bytes(target.read_bytes(), mime, headers={"Cache-Control": cache})
 
@@ -318,6 +480,90 @@ def _cache_needs_source_snapshot(cache: dict[str, Any] | None) -> bool:
         if not has_message_html:
             return True
     return _cache_needs_original_html(cache)
+
+
+def _private_source_by_id(source_id: str) -> dict[str, Any] | None:
+    for source in load_sources():
+        if str(source.get("id") or "") == str(source_id or ""):
+            return source
+    return None
+
+
+def _render_show_page(title: str, fetched_at: str, messages: list[Any], note: str = "") -> str:
+    safe_title = html.escape(str(title or "邮件查看"))
+    safe_time = html.escape(str(fetched_at or ""))
+    latest_message = next((item for item in messages if isinstance(item, dict)), None)
+    message_html = _render_show_body(latest_message)
+    if not message_html:
+        message_html = f'<section class="empty">{html.escape(note or "暂无邮件")}</section>'
+    return f"""<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>{safe_title}</title>
+  <style>
+    :root {{ color-scheme: light; --bg:#f3f5f2; --panel:#ffffff; --ink:#17201a; --muted:#6c746d; --line:#d9ded8; --accent:#2d6a4f; }}
+    * {{ box-sizing: border-box; }}
+    body {{ margin:0; font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; background:var(--bg); color:var(--ink); }}
+    header {{ display:none; }}
+    h1 {{ margin:0; font-size:20px; line-height:1.25; letter-spacing:0; }}
+    .meta {{ margin-top:6px; color:var(--muted); font-size:13px; }}
+    main {{ min-height:100vh; margin:0; padding:0; }}
+    article, .empty {{ background:var(--panel); border:1px solid var(--line); border-radius:8px; margin-bottom:14px; overflow:hidden; }}
+    .mail-head {{ padding:14px 16px; border-bottom:1px solid var(--line); background:#fbfcfa; }}
+    .subject {{ font-weight:700; font-size:16px; margin-bottom:8px; }}
+    .kv {{ color:var(--muted); font-size:13px; line-height:1.6; overflow-wrap:anywhere; }}
+    .code {{ display:inline-flex; gap:8px; align-items:center; margin-top:10px; padding:7px 10px; border-radius:6px; background:#e7f1eb; color:var(--accent); font-weight:700; }}
+    .body {{ margin:0; padding:24px; white-space:pre-wrap; line-height:1.65; overflow-wrap:anywhere; }}
+    iframe {{ display:block; width:100%; height:100vh; border:0; background:#fff; }}
+    .empty {{ padding:28px; color:var(--muted); }}
+  </style>
+</head>
+<body>
+  <header>
+    <h1>{safe_title}</h1>
+    <div class="meta">{len(messages)} 封邮件{(" · " + safe_time) if safe_time else ""}</div>
+  </header>
+  <main>{message_html}</main>
+</body>
+</html>"""
+
+
+def _render_show_body(message: dict[str, Any] | None) -> str:
+    if not message:
+        return ""
+    raw_html = str(message.get("html") or "")
+    if raw_html:
+        return f'<iframe sandbox="" referrerpolicy="no-referrer" srcdoc="{html.escape(raw_html, quote=True)}"></iframe>'
+    body = str(message.get("body") or "")
+    if not body:
+        return ""
+    return f'<div class="body">{html.escape(body)}</div>'
+
+
+def _render_show_message(message: dict[str, Any]) -> str:
+    subject = html.escape(str(message.get("subject") or "无主题"))
+    sender = html.escape(str(message.get("from") or "未知"))
+    receiver = html.escape(str(message.get("to") or "未知"))
+    date = html.escape(str(message.get("date") or "未知"))
+    code = html.escape(str(message.get("verification_code") or ""))
+    code_html = f'<div class="code">验证码 <span>{code}</span></div>' if code else ""
+    raw_html = str(message.get("html") or "")
+    if raw_html:
+        content = f'<iframe sandbox="" referrerpolicy="no-referrer" srcdoc="{html.escape(raw_html, quote=True)}"></iframe>'
+    else:
+        content = f'<div class="body">{html.escape(str(message.get("body") or ""))}</div>'
+    return f"""<article>
+  <div class="mail-head">
+    <div class="subject">{subject}</div>
+    <div class="kv">发件人：{sender}</div>
+    <div class="kv">收件人：{receiver}</div>
+    <div class="kv">时间：{date}</div>
+    {code_html}
+  </div>
+  {content}
+</article>"""
 
 
 def create_server(host: str, port: int) -> ThreadingHTTPServer:

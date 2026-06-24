@@ -2,9 +2,9 @@
 
 export function setupTheme() {
   const savedTheme = localStorage.getItem("icloud-panel-theme") || "";
-  const savedVisual = localStorage.getItem("icloud-panel-visual") || "moyu";
+  localStorage.removeItem("icloud-panel-visual");
   if (savedTheme) document.documentElement.setAttribute("data-theme", savedTheme);
-  document.documentElement.setAttribute("data-visual", savedVisual);
+  document.documentElement.setAttribute("data-visual", "moyu");
   syncButtons();
 
   $("themeToggle").addEventListener("click", () => {
@@ -19,20 +19,36 @@ export function setupTheme() {
     syncButtons();
   });
 
-  $("visualToggle").addEventListener("click", () => {
-    const isMinimal = document.documentElement.getAttribute("data-visual") === "minimal";
-    const next = isMinimal ? "moyu" : "minimal";
-    document.documentElement.setAttribute("data-visual", next);
-    localStorage.setItem("icloud-panel-visual", next);
-    syncButtons();
+  $("copy-name-btn")?.addEventListener("click", async () => {
+    const button = $("copy-name-btn");
+    const value = button?.dataset.emailName || "";
+    if (!value) return;
+    try {
+      if (navigator.clipboard?.writeText) {
+        await navigator.clipboard.writeText(value);
+      } else {
+        const input = document.createElement("textarea");
+        input.value = value;
+        input.style.position = "fixed";
+        input.style.left = "-9999px";
+        document.body.append(input);
+        input.select();
+        document.execCommand("copy");
+        input.remove();
+      }
+      button.textContent = "已复制";
+    } catch {
+      button.textContent = "复制失败";
+    }
+    window.setTimeout(() => {
+      button.textContent = "复制邮箱名";
+    }, 1200);
   });
 }
 
 function syncButtons() {
   const isDark = document.documentElement.getAttribute("data-theme") === "dark";
-  const isMinimal = document.documentElement.getAttribute("data-visual") === "minimal";
   $("themeToggle").textContent = isDark ? "浅色" : "深色";
-  $("visualToggle").textContent = isMinimal ? "手绘模式" : "极简模式";
 }
 
 

@@ -81,6 +81,10 @@ export function OverviewPanel({
           <span>邮件数量</span>
           <b>{stats.messages || 0}</b>
         </div>
+        <div className="stat">
+          <span>主邮箱</span>
+          <b>{stats.main_mailboxes || 0}</b>
+        </div>
         <div className="stat dangerStat">
           <span>异常账号</span>
           <b>{stats.errors || 0}</b>

@@ -7,7 +7,7 @@ from concurrent.futures import FIRST_COMPLETED, ThreadPoolExecutor, wait
 from typing import Any
 
 from dashboard_app.config import settings
-from dashboard_app.services.accounts import load_accounts
+from dashboard_app.services.accounts import account_has_source, load_accounts
 from dashboard_app.services.mail_fetcher import fetch_mail_for_account
 from dashboard_app.services.time_utils import now_iso
 
@@ -39,7 +39,7 @@ def start_scan(account_ids: list[str], reason: str = "manual") -> dict[str, Any]
 
 
 def start_scan_all(reason: str = "manual_all") -> dict[str, Any]:
-    account_ids = [str(item.get("id") or "") for item in load_accounts() if item.get("source_url")]
+    account_ids = [str(item.get("id") or "") for item in load_accounts() if account_has_source(item)]
     return start_scan(account_ids, reason=reason)
 
 
@@ -55,7 +55,7 @@ def retry_failed() -> dict[str, Any]:
         failed_ids = [
             str(item.get("id") or "")
             for item in load_accounts()
-            if item.get("last_error") and item.get("source_url")
+            if item.get("last_error") and account_has_source(item)
         ]
     if not failed_ids:
         return {"ok": False, "error": "没有需要重试的失败账号"}

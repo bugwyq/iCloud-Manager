@@ -2,12 +2,14 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react"
 import { api, ApiError, sessionStatus } from "@/lib/api"
-import { messagesFromCache, normalizeMessage, normalizeDateOnly } from "@/lib/mail"
+import { messagesFromCache, normalizeDateOnly, normalizeMessage } from "@/lib/mail"
 import type {
   Account,
   AccountFilter,
   MailCache,
   MailMessage,
+  MailSource,
+  MainMailboxOption,
   Scan,
   Stats,
   StateResponse,
@@ -32,6 +34,13 @@ export interface MailFilters {
   to: string
 }
 
+interface ListPayload {
+  accounts?: Account[]
+  main_mailboxes?: MainMailboxOption[]
+  stats?: Stats
+  mail_sources?: MailSource[]
+}
+
 let toastSeq = 0
 let logSeq = 0
 
@@ -41,6 +50,8 @@ export function useDashboard() {
   const [connOk, setConnOk] = useState(true)
 
   const [accounts, setAccounts] = useState<Account[]>([])
+  const [mainMailboxes, setMainMailboxes] = useState<MainMailboxOption[]>([])
+  const [mailSources, setMailSources] = useState<MailSource[]>([])
   const [stats, setStats] = useState<Stats>({})
   const [scan, setScan] = useState<Scan>({ status: "idle" })
 
@@ -55,6 +66,8 @@ export function useDashboard() {
 
   const [accountSearch, setAccountSearch] = useState("")
   const [accountFilter, setAccountFilter] = useState<AccountFilter>("all")
+  const [mainMailboxFilter, setMainMailboxFilter] = useState("")
+  const [selectedAccountIds, setSelectedAccountIds] = useState<string[]>([])
   const [mailFilters, setMailFilters] = useState<MailFilters>({
     keyword: "",
     code: "",
@@ -65,7 +78,6 @@ export function useDashboard() {
   const [logs, setLogs] = useState<LogItem[]>([])
   const [toasts, setToasts] = useState<ToastItem[]>([])
 
-  // Refs to read latest values inside intervals / async without stale closures.
   const selectedIdRef = useRef(selectedId)
   const scanRef = useRef(scan)
   const authRef = useRef(authenticated)
@@ -76,17 +88,14 @@ export function useDashboard() {
 
   const toast = useCallback((message: string, type: ToastItem["type"] = "ok") => {
     const id = ++toastSeq
-    setToasts((prev) => {
-      const next = [...prev, { id, message, type }]
-      return next.slice(-5)
-    })
-    setTimeout(() => {
-      setToasts((prev) => prev.filter((t) => t.id !== id))
+    setToasts((prev) => [...prev, { id, message, type }].slice(-5))
+    window.setTimeout(() => {
+      setToasts((prev) => prev.filter((item) => item.id !== id))
     }, 3600)
   }, [])
 
   const dismissToast = useCallback((id: number) => {
-    setToasts((prev) => prev.filter((t) => t.id !== id))
+    setToasts((prev) => prev.filter((item) => item.id !== id))
   }, [])
 
   const addLog = useCallback((message: string) => {
@@ -100,19 +109,24 @@ export function useDashboard() {
   const clearLog = useCallback(() => setLogs([]), [])
 
   const currentAccount = useMemo(
-    () => accounts.find((a) => a.id === selectedId) || null,
+    () => accounts.find((account) => account.id === selectedId) || null,
     [accounts, selectedId],
   )
 
+  useEffect(() => {
+    const liveIds = new Set(accounts.map((account) => account.id))
+    setSelectedAccountIds((prev) => prev.filter((id) => liveIds.has(id)))
+  }, [accounts])
+
   const filteredMessages = useMemo(() => {
-    const matches = (message: MailMessage) => {
+    return messages.filter((message) => {
       const dm = normalizeMessage(message) || message
       const keyword = mailFilters.keyword.trim().toLowerCase()
       const code = mailFilters.code.trim()
       const from = mailFilters.from
       const to = mailFilters.to
       const haystack = [dm.subject, dm.from, dm.to, dm.body, dm.date]
-        .map((v) => String(v || "").toLowerCase())
+        .map((value) => String(value || "").toLowerCase())
         .join("\n")
       if (keyword && !haystack.includes(keyword)) return false
       if (code && !String(dm.verification_code || "").includes(code)) return false
@@ -121,13 +135,11 @@ export function useDashboard() {
       if (to && messageDate && messageDate > to) return false
       if ((from || to) && !messageDate) return false
       return true
-    }
-    return messages.filter(matches)
+    })
   }, [messages, mailFilters])
 
-  // Keep a valid selected message id in sync with the filtered list.
   useEffect(() => {
-    if (!filteredMessages.some((m) => m.id === selectedMessageId)) {
+    if (!filteredMessages.some((message) => message.id === selectedMessageId)) {
       setSelectedMessageId(filteredMessages[0]?.id || "")
     }
   }, [filteredMessages, selectedMessageId])
@@ -137,6 +149,13 @@ export function useDashboard() {
     if (messages.length && !filteredMessages.length) return "没有匹配筛选条件的邮件"
     return noHistory ? "无历史邮件" : "暂无缓存邮件"
   }, [accountError, messages.length, filteredMessages.length, noHistory])
+
+  const applyListPayload = useCallback((payload: ListPayload) => {
+    if (payload.accounts) setAccounts(payload.accounts)
+    if (payload.main_mailboxes) setMainMailboxes(payload.main_mailboxes)
+    if (payload.stats) setStats(payload.stats)
+    if (payload.mail_sources) setMailSources(payload.mail_sources)
+  }, [])
 
   const loadAccount = useCallback(
     async (id: string) => {
@@ -151,9 +170,9 @@ export function useDashboard() {
         setMessages(messagesFromCache(cache))
         setNoHistory(Boolean(cache?.no_history || data.account?.no_history))
         setSelectedMessageId("")
-        setAccountError(data.account?.last_error ? `⚠ ${data.account.last_error}` : "")
+        setAccountError(data.account?.last_error ? `错误：${data.account.last_error}` : "")
         setAccounts((prev) =>
-          prev.map((a) => (a.id === id ? { ...a, ...data.account } : a)),
+          prev.map((account) => (account.id === id ? { ...account, ...data.account } : account)),
         )
       } catch (err) {
         if (loadSeq !== accountLoadSeq.current || selectedIdRef.current !== id) return
@@ -168,18 +187,18 @@ export function useDashboard() {
   )
 
   const loadState = useCallback(
-    async (
-      keepSelection = true,
-      options: { reloadSelected?: boolean } = {},
-    ) => {
+    async (keepSelection = true, options: { reloadSelected?: boolean } = {}) => {
       const { reloadSelected = true } = options
       const data = await api<StateResponse>("/api/state")
       setAccounts(data.accounts || [])
+      setMainMailboxes(data.main_mailboxes || [])
+      setMailSources(data.mail_sources || [])
       setStats(data.stats || {})
       setScan(data.scan || { status: "idle" })
       setConnOk(true)
+
       let nextSelected = selectedIdRef.current
-      const hasSelected = (data.accounts || []).some((a) => a.id === nextSelected)
+      const hasSelected = (data.accounts || []).some((account) => account.id === nextSelected)
       if (!keepSelection || !hasSelected) {
         nextSelected = data.accounts?.[0]?.id || ""
         setSelectedId(nextSelected)
@@ -232,7 +251,7 @@ export function useDashboard() {
 
   const fetchSelected = useCallback(
     async (force = true) => {
-      const account = accounts.find((a) => a.id === selectedIdRef.current)
+      const account = accounts.find((item) => item.id === selectedIdRef.current)
       if (!account) return
       setBusy(true)
       try {
@@ -242,24 +261,24 @@ export function useDashboard() {
         })
         const cache = data.cache || {}
         const msgs = messagesFromCache(cache)
-        setMessages(msgs)
         const nh = Boolean(cache.no_history || data.account?.no_history)
+        setMessages(msgs)
         setNoHistory(nh)
         setSelectedMessageId("")
         setAccountError("")
-        addLog(`${account.email} 刷新完成，${msgs.length} 封邮件`)
+        addLog(`${account.email} 刷新完成：${msgs.length} 封邮件`)
         toast("邮件已更新")
         setAccounts((prev) =>
-          prev.map((a) =>
-            a.id === account.id
+          prev.map((item) =>
+            item.id === account.id
               ? {
-                  ...a,
+                  ...item,
                   ...(data.account || {}),
                   cached: true,
                   last_message_count: msgs.length,
                   no_history: nh,
                 }
-              : a,
+              : item,
           ),
         )
       } catch (err) {
@@ -270,17 +289,21 @@ export function useDashboard() {
         setBusy(false)
       }
     },
-    [accounts, addLog, toast, loadState],
+    [accounts, addLog, loadState, toast],
   )
 
   const importText = useCallback(
-    async (text: string) => {
-      if (importing) return
+    async (text: string, mainMailbox = "") => {
+      if (importing) return false
       setImporting(true)
       try {
-        const data = await api<{ stats: any; accounts: Account[]; scan: Scan }>("/api/import", {
+        const data = await api<{
+          stats: Record<string, number>
+          accounts: Account[]
+          scan: Scan
+        }>("/api/import", {
           method: "POST",
-          body: { text },
+          body: { text, main_mailbox: mainMailbox },
         })
         const s = data.stats || {}
         const skipped = (s.skipped_invalid || 0) + (s.skipped_non_icloud || 0)
@@ -301,12 +324,15 @@ export function useDashboard() {
         setImporting(false)
       }
     },
-    [importing, addLog, toast, loadState],
+    [importing, addLog, loadState, toast],
   )
 
   const scanAllHistory = useCallback(async () => {
-    const acc = accounts.filter((a) => a.has_source)
-    if (acc.length > 50 && !window.confirm(`将扫描全部 ${acc.length} 个带收信链接的邮箱，确认开始？`)) {
+    const scannable = accounts.filter((account) => account.has_source)
+    if (
+      scannable.length > 50 &&
+      !window.confirm(`将扫描全部 ${scannable.length} 个已配置收信源的邮箱，确认开始？`)
+    ) {
       return
     }
     try {
@@ -354,7 +380,7 @@ export function useDashboard() {
   }, [addLog, toast])
 
   const clearSelectedCache = useCallback(async () => {
-    const account = accounts.find((a) => a.id === selectedIdRef.current)
+    const account = accounts.find((item) => item.id === selectedIdRef.current)
     if (!account) return
     if (!window.confirm(`确认清除 ${account.email} 的本地缓存？不会删除源站数据。`)) return
     try {
@@ -369,38 +395,198 @@ export function useDashboard() {
     } catch (err) {
       toast((err as Error).message, "error")
     }
-  }, [accounts, addLog, toast, loadState])
+  }, [accounts, addLog, loadState, toast])
+
+  const applyAccountsAfterDelete = useCallback(
+    async (
+      nextAccounts: Account[],
+      options: { clearMainMailbox?: boolean; clearSelection?: boolean } = {},
+    ) => {
+      const liveIds = new Set(nextAccounts.map((account) => account.id))
+      const nextSelected = liveIds.has(selectedIdRef.current)
+        ? selectedIdRef.current
+        : nextAccounts[0]?.id || ""
+
+      setAccounts(nextAccounts)
+      setSelectedAccountIds((prev) =>
+        options.clearSelection ? [] : prev.filter((id) => liveIds.has(id)),
+      )
+      setSelectedId(nextSelected)
+      setMessages([])
+      setNoHistory(false)
+      setSelectedMessageId("")
+      setAccountError("")
+      if (options.clearMainMailbox) setMainMailboxFilter("")
+      if (nextSelected) await loadAccount(nextSelected)
+    },
+    [loadAccount],
+  )
+
+  const saveMailSource = useCallback(
+    async (source: Partial<MailSource>) => {
+      const data = await api<ListPayload & { mail_source?: MailSource }>("/api/mail_sources", {
+        method: "POST",
+        body: source,
+      })
+      applyListPayload(data)
+      addLog(`收信源已保存：${data.mail_source?.name || source.name || source.email || source.username}`)
+      toast("收信源已保存", "success")
+      return data.mail_source
+    },
+    [addLog, applyListPayload, toast],
+  )
+
+  const testMailSource = useCallback(
+    async (source: Partial<MailSource>) => {
+      const data = await api<ListPayload & { mail_source?: MailSource }>("/api/test_mail_source", {
+        method: "POST",
+        body: source,
+      })
+      applyListPayload(data)
+      addLog(`收信源测试通过：${data.mail_source?.name || source.name || source.email || source.username}`)
+      toast("IMAP 连接测试通过", "success")
+      return data.mail_source
+    },
+    [addLog, applyListPayload, toast],
+  )
+
+  const deleteMailSource = useCallback(
+    async (id: string) => {
+      const data = await api<ListPayload>("/api/delete_mail_source", {
+        method: "POST",
+        body: { id },
+      })
+      applyListPayload(data)
+      addLog("收信源已删除")
+      toast("收信源已删除", "warn")
+      await loadState(true, { reloadSelected: false })
+      return true
+    },
+    [addLog, applyListPayload, loadState, toast],
+  )
 
   const deleteSelected = useCallback(async () => {
-    const account = accounts.find((a) => a.id === selectedIdRef.current)
+    const account = accounts.find((item) => item.id === selectedIdRef.current)
     if (!account) return
     if (!window.confirm(`确认删除 ${account.email}？本地缓存也会一起删除。`)) return
     try {
-      await api("/api/delete_account", { method: "POST", body: { id: account.id } })
+      const data = await api<ListPayload>("/api/delete_account", {
+        method: "POST",
+        body: { id: account.id },
+      })
       addLog(`${account.email} 已删除`)
-      setSelectedId("")
-      setMessages([])
-      setNoHistory(false)
+      applyListPayload(data)
+      await applyAccountsAfterDelete(data.accounts || [], { clearSelection: true })
       toast("邮箱已删除", "warn")
-      await loadState(false)
     } catch (err) {
       toast((err as Error).message, "error")
     }
-  }, [accounts, addLog, toast, loadState])
+  }, [accounts, addLog, applyAccountsAfterDelete, applyListPayload, toast])
+
+  const toggleAccountSelection = useCallback((id: string, checked?: boolean) => {
+    setSelectedAccountIds((prev) => {
+      const exists = prev.includes(id)
+      const shouldSelect = typeof checked === "boolean" ? checked : !exists
+      if (shouldSelect && !exists) return [...prev, id]
+      if (!shouldSelect && exists) return prev.filter((item) => item !== id)
+      return prev
+    })
+  }, [])
+
+  const selectVisibleAccounts = useCallback((ids: string[]) => {
+    setSelectedAccountIds(Array.from(new Set(ids.filter(Boolean))))
+  }, [])
+
+  const clearAccountSelection = useCallback(() => setSelectedAccountIds([]), [])
+
+  const deleteSelectedAccounts = useCallback(async () => {
+    const ids = selectedAccountIds
+    if (!ids.length) {
+      toast("请先勾选要删除的邮箱", "warn")
+      return
+    }
+    if (!window.confirm(`确认删除选中的 ${ids.length} 个子邮箱？本地缓存也会一起删除。`)) return
+    try {
+      const data = await api<ListPayload & { deleted?: number }>("/api/delete_accounts", {
+        method: "POST",
+        body: { ids },
+      })
+      addLog(`批量删除完成：${data.deleted || ids.length} 个子邮箱`)
+      toast("选中邮箱已删除", "warn")
+      applyListPayload(data)
+      await applyAccountsAfterDelete(data.accounts || [], { clearSelection: true })
+    } catch (err) {
+      toast((err as Error).message, "error")
+    }
+  }, [selectedAccountIds, addLog, applyAccountsAfterDelete, applyListPayload, toast])
+
+  const deleteMainMailboxAccounts = useCallback(async () => {
+    const name = mainMailboxFilter.trim()
+    if (!name) {
+      toast("请先选择一个主邮箱", "warn")
+      return
+    }
+    const count = accounts.filter((account) => (account.main_mailbox || "") === name).length
+    if (!count) {
+      toast("这个主邮箱下没有子邮箱", "warn")
+      return
+    }
+    if (!window.confirm(`确认删除主邮箱「${name}」关联的 ${count} 个子邮箱？本地缓存也会一起删除。`)) return
+    try {
+      const data = await api<ListPayload & { deleted?: number }>("/api/delete_by_main_mailbox", {
+        method: "POST",
+        body: { main_mailbox: name },
+      })
+      addLog(`已删除主邮箱 ${name} 关联的 ${data.deleted || count} 个子邮箱`)
+      toast("主邮箱关联子邮箱已删除", "warn")
+      applyListPayload(data)
+      await applyAccountsAfterDelete(data.accounts || [], {
+        clearMainMailbox: true,
+        clearSelection: true,
+      })
+    } catch (err) {
+      toast((err as Error).message, "error")
+    }
+  }, [mainMailboxFilter, accounts, addLog, applyAccountsAfterDelete, applyListPayload, toast])
+
+  const exportSelectedAccounts = useCallback(async () => {
+    const ids = selectedAccountIds
+    if (!ids.length) {
+      toast("请先勾选要导出的邮箱", "warn")
+      return
+    }
+    try {
+      const data = await api<{ text: string; filename?: string }>("/api/export_accounts", {
+        method: "POST",
+        body: { ids },
+      })
+      const blob = new Blob([data.text || ""], { type: "text/plain;charset=utf-8" })
+      const url = URL.createObjectURL(blob)
+      const link = document.createElement("a")
+      link.href = url
+      link.download = data.filename || "icloud-mail-links.txt"
+      document.body.append(link)
+      link.click()
+      link.remove()
+      window.setTimeout(() => URL.revokeObjectURL(url), 1000)
+      addLog(`已导出 ${ids.length} 个邮箱查看链接`)
+      toast("导出文件已生成", "success")
+    } catch (err) {
+      toast((err as Error).message, "error")
+    }
+  }, [selectedAccountIds, addLog, toast])
 
   const reload = useCallback(() => {
     loadState(true).catch((err) => toast((err as Error).message, "error"))
   }, [loadState, toast])
 
-  // Initial session check.
   useEffect(() => {
     checkSession()
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
 
-  // Fast scan-status polling.
   useEffect(() => {
-    const timer = setInterval(async () => {
+    const timer = window.setInterval(async () => {
       if (!authRef.current) return
       try {
         const prevStatus = scanRef.current?.status
@@ -425,12 +611,11 @@ export function useDashboard() {
         setConnOk(false)
       }
     }, 3000)
-    return () => clearInterval(timer)
+    return () => window.clearInterval(timer)
   }, [loadState])
 
-  // Slow full-state refresh.
   useEffect(() => {
-    const timer = setInterval(() => {
+    const timer = window.setInterval(() => {
       if (!authRef.current) return
       const status = scanRef.current?.status
       if (status === "running" || status === "retry_waiting" || status === "cancelling") return
@@ -439,7 +624,7 @@ export function useDashboard() {
         else setConnOk(false)
       })
     }, 20000)
-    return () => clearInterval(timer)
+    return () => window.clearInterval(timer)
   }, [loadState])
 
   return {
@@ -447,6 +632,8 @@ export function useDashboard() {
     authChecked,
     connOk,
     accounts,
+    mainMailboxes,
+    mailSources,
     stats,
     scan,
     selectedId,
@@ -463,6 +650,12 @@ export function useDashboard() {
     setAccountSearch,
     accountFilter,
     setAccountFilter,
+    mainMailboxFilter,
+    setMainMailboxFilter,
+    selectedAccountIds,
+    toggleAccountSelection,
+    selectVisibleAccounts,
+    clearAccountSelection,
     mailFilters,
     setMailFilters,
     logs,
@@ -471,17 +664,22 @@ export function useDashboard() {
     clearLog,
     addLog,
     toast,
-    // actions
     login,
     logout,
     reload,
     selectAccount,
     fetchSelected,
     importText,
+    saveMailSource,
+    testMailSource,
+    deleteMailSource,
     scanAllHistory,
     retryFailed,
     cancelScan,
     clearSelectedCache,
     deleteSelected,
+    deleteSelectedAccounts,
+    deleteMainMailboxAccounts,
+    exportSelectedAccounts,
   }
 }
